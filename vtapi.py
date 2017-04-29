@@ -294,7 +294,7 @@ class Report(JsonReport):
             self.state,
         )]
         y.extend(map(row_pair_format, r))
-        return '\n'.join(y)
+        return u'\n'.join(y)
 
     def get_vendor(self, vendor):
         '''
