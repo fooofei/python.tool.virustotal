@@ -1,5 +1,5 @@
 
-## ViusTotal Public API 2.0 With grequests
+## VirusTotal Public API 2.0 With grequests
 
 
 ### get reports
