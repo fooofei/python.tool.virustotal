@@ -628,7 +628,7 @@ def vt_batch_async_scan(pairs):
             break
         r2 = _vt_batch_asnyc_scan_noretry(_md5_set_to_pairs(fail_md5s, pairs))
         if not r2 and len(fail_md5s) > 5:
-            break  # 5 个都查询失败了，应该是断网了
+            break  # 5 个都失败了，应该是断网了
         # 使用增量计算
         ok_md5s = _reports_md5_to_set(r2)
         all_md5s = fail_md5s
