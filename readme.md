@@ -22,7 +22,7 @@ use Report().ok to detect report is valid or invalid.
 ```python
 vt_batch_async_rescan(...)
 
-tell VirusTotal to rescan resources we gived, not contains file not exists in VirusTotal.s
+tell VirusTotal to rescan resources we gived, not contains file not exists in VirusTotal.
 
 ```
 
