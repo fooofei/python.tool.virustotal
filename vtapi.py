@@ -64,12 +64,12 @@ def vt_make_request_report(anything):
             }
 
 
-    if file not exists:
+    file not exists:
         {"response_code": 0, 
         "resource": "b0f6d5758c76762233c29b74094cecd7", 
         "verbose_msg": "The requested resource is not among the finished, queued or pending scans"}
 
-    if query ',' :
+    ',' :
         return []
 
      '''
@@ -101,7 +101,7 @@ def vt_make_request_rescan(anything):
         }
 
     file not exists:
-    '{"response_code": 0, "resource": "b0f6d5758c76762233c29b74094cecd7"}'
+      {"response_code": 0, "resource": "b0f6d5758c76762233c29b74094cecd7"}
 
     '''
     # todo with anything
@@ -116,7 +116,7 @@ def vt_make_request_rescan(anything):
             }
 
 
-def vt_make_request_scan(file_content, file_name=u'file_from_360qex'):
+def vt_make_request_scan(file_content, file_name=u'file_from_pyvirustotal_make_request'):
     '''
     :param file_content: 
     :param file_name:  can be fake name
