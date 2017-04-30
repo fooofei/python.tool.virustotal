@@ -10,9 +10,9 @@ vt_batch_async_report(...)
 
 give an iterable object, which is a vt resource, can be MD5, SHA1, SHA256, vt_scan_id.
 
-return list of sReport().
+return list of Report().
 
-use Report().ok to detect report is valid.
+use Report().ok to detect report is valid or invalid.
 
 ### rescan
 
