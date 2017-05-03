@@ -27,6 +27,7 @@ scandir.walk  benchmark :
 # 2017-02-23 v2.10 add io map
 # 2017-03-14 v2.20 io_out_arg 增加参数
 # 2017-04-28 v2.30 add io_iter_split_step, 一步步取文件，在遇到大量文件的时候，可以指定步长取文件，比如 10000 一次
+# 2017-05-02 v2.30 add io_path_format
 
 from __future__ import with_statement
 import os
@@ -51,6 +52,8 @@ io_str_codes = (io_in_code, io_out_code)
 
 
 def io_in_arg(arg):
+    if not arg:
+        return arg
     if isinstance(arg, io_in_code):
         return arg
     codes = ['utf-8', 'gbk']
@@ -69,6 +72,8 @@ def io_bytes_arg(arg):
     :param arg:
     :return:
     '''
+    if not arg:
+        return arg
     if isinstance(arg, io_in_code):
         codes = ['utf-8', 'gbk']
         for c in codes:
@@ -213,6 +218,18 @@ def io_is_path_valid(pathname):
     else:
         return True
 
+def io_path_format(fullpath,replace_with=None):
+    '''
+    remove forbidden chars in path
+    :param fullpath: 
+    :return: 
+    '''
+    if not isinstance(fullpath,io_in_code):
+        raise ValueError(u'only support type {0}'.format(io_in_code))
+
+    windows_path_forbidden_chars = u'\\/*?:"<>|'
+    remove_map = dict((ord(char),replace_with if replace_with else None) for char in windows_path_forbidden_chars )
+    return fullpath.translate(remove_map)
 
 def io_thread_map(thread_func,thread_data,max_workers=20):
     '''
@@ -402,7 +419,31 @@ def test_path():
         io_print(io_is_path_valid(e))
 
 
+def test_io_is_path_valid():
+    '''
+    c:\1->valid
+    c:\21?->invalid
+    c:\21*->invalid
+    c:\21:->invalid
+    c:\21"->invalid
+    c:\21|->invalid
+    c:\21<->invalid
+    c:\21>->invalid 
+    '''
+
+    _func = lambda p :u'{}->{}'.format(p,u'valid' if io_is_path_valid(p) else u'invalid')
+
+    io_print(_func(u'c:\\1'))
+    io_print(_func(u'c:\\21?'))
+    io_print(_func(u'c:\\21*'))
+    io_print(_func(u'c:\\21:'))
+    io_print(_func(u'c:\\21"'))
+    io_print(_func(u'c:\\21|'))
+    io_print(_func(u'c:\\21<'))
+    io_print(_func(u'c:\\21>'))
+
 if __name__ == '__main__':
     test()
     test_tupple()
     test_path()
+    test_io_is_path_valid()

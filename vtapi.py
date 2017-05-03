@@ -11,11 +11,14 @@
  
  有可能有时候是 vt 不可链接，这种情况还没处理，会抛异常
  
+ 2017_05_03 实际测试查询 5000 个样本， grequests 并没有优势，比 requests 还慢，暂时不知道原因
+ 
 '''
 
 # ------------------------------------------------------------------------------
 # CHANGELOG:
 # 2017-04-29 v1.00 fooofei: use grequests to wrap virustotal api
+# 2017-05-03 v1.01 fooofei: grequests retry
 
 
 from __future__ import print_function
@@ -28,6 +31,7 @@ from io_in_out import *
 from vtapi_key import VirusTotal_API_Key
 
 VirusTotal_Url_Base = u'https://www.virustotal.com/vtapi/v2/file'
+VirusTotal_Proxy = None
 
 
 def _vt_make_request_param(resource):
@@ -81,7 +85,8 @@ def vt_make_request_report(anything):
     return {u'method': u'get',
             u'url': url,
             u'params': params,
-            u'timeout': 4,
+            u'timeout': 8,
+            u'proxies': VirusTotal_Proxy,
             }
 
 
@@ -113,6 +118,7 @@ def vt_make_request_rescan(anything):
             u'url': url,
             u'params': params,
             u'timeout': 5,
+            u'proxies': VirusTotal_Proxy,
             }
 
 
@@ -143,6 +149,7 @@ def vt_make_request_scan(file_content, file_name=u'file_from_pyvirustotal_make_r
             u'params': params,
             u'files': files,
             u'timeout': 20,
+            u'proxies': VirusTotal_Proxy,
             }
 
 
@@ -164,6 +171,8 @@ def vt_make_resource_from_hashs(hashs):
       this allows you to perform a batch request with one single call.
     
     '''
+    if not hashs:
+        return None
     valid_hashs = _vt_filter_valid_resources(hashs)
     if valid_hashs:
         return u','.join(valid_hashs)
@@ -341,7 +350,7 @@ class Report(JsonReport):
         return [(e, self[e]) for e in header]
 
     def default_report(self):
-        header = [u'md5', u'sha1', u'sha256', u'detect_rate', u'scan_date']
+        header = [u'state', u'md5', u'sha1', u'sha256', u'detect_rate', u'scan_date']
         r = []
         for e in header:
             r.append((e, self[e]))
@@ -375,6 +384,8 @@ class Report(JsonReport):
         :param r: 
         :return: []
         '''
+        if not r :
+            return None
         import json
         try:
             t = []
@@ -413,9 +424,10 @@ def vt_report_from_resource(resource):
     :param resource: 
     :return: 原始 vt 返回字符串，如果要转为 Report 实例，需要创建实例 / None
     '''
+    if not resource:
+        return None
     req = vt_make_request_report(resource)
     return _vt_default_request(req)
-
 
 def vt_rescan_from_resource(resource):
     '''
@@ -449,18 +461,48 @@ def vt_batch_sync_report(hashs, split_unit_count=15):
     :return:  list of Report()
     '''
     return_reports = []
+
+    _fn = lambda x,y : y(x) if x else None
+
     for ev in io_iter_split_step(data=hashs, split_unit_count=split_unit_count):
-        e = vt_make_resource_from_hashs(ev)
-        if e:
-            r_raw_str = vt_report_from_resource(e)
-            if r_raw_str:
-                return_reports.extend(Report.dispatch_report(r_raw_str))
+        reduce(_fn,[ev,
+                        vt_make_resource_from_hashs,
+                        vt_report_from_resource,
+                        Report.dispatch_report,
+                        return_reports.extend])
     return return_reports
 
 
+class ExceptionRequestsCollector(object):
+    def __init__(self):
+        self.exception_requests = []
+
+    def _grequests_exception_handler(self, request, exception):
+        self.exception_requests.append(request)
+        io_stderr_print(exception)
+
+
+def _grequests_map_retry(requests, size=None, gtimeout=None):
+    import grequests
+    ret = []
+
+    this_requests = requests
+    while len(ret) < len(requests):
+        collector = ExceptionRequestsCollector()
+        responses = grequests.map(this_requests, size=size, exception_handler=collector._grequests_exception_handler,
+                                  gtimeout=gtimeout)
+        ret.extend(filter(lambda e: True if e else False, responses))
+        exception_requests = collector.exception_requests
+        if len(exception_requests) == len(this_requests):
+            # all fail
+            break
+        this_requests = exception_requests
+    return ret
+
 def _vt_batch_asnyc_framework_noretry(resources,
                                       pfn_resource_to_request,
-                                      split_unit_count):
+                                      split_unit_count,
+                                      grequests_pool_size):
     '''
     可以被 vt report 或者 vt rescan 使用，这两个都是每次请求可以查多个文件
     :param hashs:  must be isinstance(data, collections.Iterable):
@@ -476,7 +518,7 @@ def _vt_batch_asnyc_framework_noretry(resources,
             q = grequests.request(req.pop(u'method'), req.pop(u'url'), **req)
             reqs.append(q)
 
-    responses = grequests.map(reqs, size=20)
+    responses = _grequests_map_retry(reqs, size=grequests_pool_size, gtimeout=20)
     return_reports = []
     for e in responses:
         if e and e.status_code == 200 and e.content:
@@ -487,7 +529,8 @@ def _vt_batch_asnyc_framework_noretry(resources,
 
 def _vt_batch_async_framework(hashs, pfn_resource_to_request,
                               split_unit_count,
-                              retry_times):
+                              retry_times,
+                              grequests_pool_size):
     '''
     
     此函数供 report 和 rescan 使用
@@ -501,7 +544,7 @@ def _vt_batch_async_framework(hashs, pfn_resource_to_request,
     return_reports = []
 
     i = 0
-    retry_times += 1
+    retry_times += 1  # 重试的功能移交到 _grequests_map_retry 中，重试更细化，这部分代码先留着
     all_resources = set(hashs)
     ok_resources = set()
     while len(return_reports) < len(hashs) and i < retry_times:
@@ -510,7 +553,8 @@ def _vt_batch_async_framework(hashs, pfn_resource_to_request,
             break
         r2 = _vt_batch_asnyc_framework_noretry(fail_resources,
                                                pfn_resource_to_request=pfn_resource_to_request,
-                                               split_unit_count=split_unit_count)
+                                               split_unit_count=split_unit_count,
+                                               grequests_pool_size=grequests_pool_size)
 
         if not r2 and len(fail_resources) / split_unit_count > 10:
             break  # 10 次(不一定是 10 个)都查询失败了，应该是断网了
@@ -524,7 +568,7 @@ def _vt_batch_async_framework(hashs, pfn_resource_to_request,
     return return_reports
 
 
-def vt_batch_async_report(hashs, if_analyzing_wait=False, split_unit_count=15):
+def vt_batch_async_report(hashs,**kwargs):
     '''
     获取 vt 结果
     
@@ -539,11 +583,13 @@ def vt_batch_async_report(hashs, if_analyzing_wait=False, split_unit_count=15):
     # currying the function _vt_batch_async_framework()
     _small_func = partial(_vt_batch_async_framework,
                           pfn_resource_to_request=vt_make_request_report,
-                          split_unit_count=split_unit_count,
-                          retry_times=3)
+                          split_unit_count=kwargs.get(u'request_tasks',15),
+                          grequests_pool_size=kwargs.get(u'grequests_pool_size',4),
+                          retry_times=0)
     rs = _small_func(hashs)
     start_time = time.clock()
-    while if_analyzing_wait:
+    v =  kwargs.get(u'if_analyzing_wait',False)
+    while v:
         # set the time limit
         if int(time.clock() - start_time) > 60 * len(hashs):
             break
@@ -570,7 +616,8 @@ def vt_batch_async_rescan(hashs, split_unit_count=15):
     return _vt_batch_async_framework(hashs,
                                      pfn_resource_to_request=vt_make_request_rescan,
                                      split_unit_count=split_unit_count,
-                                     retry_times=3)
+                                     retry_times=0,
+                                     grequests_pool_size=4)
 
 
 def _vt_batch_asnyc_scan_noretry(resources):
@@ -590,7 +637,7 @@ def _vt_batch_asnyc_scan_noretry(resources):
         q = grequests.request(req.pop(u'method'), req.pop(u'url'), **req)
         reqs.append(q)
 
-    responses = grequests.map(reqs, size=min(20, len(resources)))
+    responses = _grequests_map_retry(reqs, size=8)
     return_reports = []
     for e in responses:
         if e and e.status_code == 200 and e.content:
@@ -619,7 +666,7 @@ def vt_batch_async_scan(pairs):
     return_reports = []
 
     i = 0
-    retry_times = 50  # 5 次都少
+    retry_times = 0  # 50 # 5 次都少
     all_md5s = _pairs_to_md5_set(pairs)
     ok_md5s = set()
     while len(return_reports) < len(pairs) and i < retry_times:
@@ -628,7 +675,7 @@ def vt_batch_async_scan(pairs):
             break
         r2 = _vt_batch_asnyc_scan_noretry(_md5_set_to_pairs(fail_md5s, pairs))
         if not r2 and len(fail_md5s) > 5:
-            break  # 5 个都失败了，应该是断网了
+            break  # 5 个都查询失败了，应该是断网了
         # 使用增量计算
         ok_md5s = _reports_md5_to_set(r2)
         all_md5s = fail_md5s
@@ -651,7 +698,7 @@ def vt_batch_async_scan_fullpath(datas):
                                                 open(e[six.binary_type(u'fullpath')], six.binary_type(u'rb'))
                                             }) or e
 
-    for ev in io_iter_split_step(datas, 10):
+    for ev in io_iter_split_step(datas, 20):
         ev = map(_add_file_content, ev)
         vt_batch_async_scan(ev)
 
