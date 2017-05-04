@@ -12,7 +12,7 @@
  有可能有时候是 vt 不可链接，这种情况还没处理，会抛异常
  
  2017_05_03 实际测试查询 5000 个样本， grequests 并没有优势，比 requests 还慢，暂时不知道原因
- 
+            grequests 加 thread pool 还是不加 都慢
 '''
 
 # ------------------------------------------------------------------------------
@@ -424,10 +424,16 @@ def vt_report_from_resource(resource):
     :param resource: 
     :return: 原始 vt 返回字符串，如果要转为 Report 实例，需要创建实例 / None
     '''
+    import requests
     if not resource:
         return None
     req = vt_make_request_report(resource)
-    return _vt_default_request(req)
+    while 1:
+        try:
+            return _vt_default_request(req)
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
+            pass
+
 
 def vt_rescan_from_resource(resource):
     '''
@@ -462,14 +468,14 @@ def vt_batch_sync_report(hashs, split_unit_count=15):
     '''
     return_reports = []
 
-    _fn = lambda x,y : y(x) if x else None
+    _fn = lambda x, y: y(x) if x else None
 
     for ev in io_iter_split_step(data=hashs, split_unit_count=split_unit_count):
-        reduce(_fn,[ev,
-                        vt_make_resource_from_hashs,
-                        vt_report_from_resource,
-                        Report.dispatch_report,
-                        return_reports.extend])
+        reduce(_fn, [ev,
+                     vt_make_resource_from_hashs,
+                     vt_report_from_resource,
+                     Report.dispatch_report,
+                     return_reports.extend])
     return return_reports
 
 
