@@ -1,18 +1,28 @@
 # coding=utf-8
 
 '''
- 请求超时控制、上传文件大小限制、异常处理都由使用者来做
+
+ The project is aimed to use grequests wrap VirusTotal.com API ,
+   but the testing is not optimistic.
+
+
+* not handle requests time out
+* not handle limit size of upload file
+* not handle exceptions
+* not pre testing the VirusTotal.com is can connect, if we querying lots of files one time, such as 10w,
+    then every request will cost much time, and fail
+* not finished
  
- 测试 ：
-    grequests 比 requests 快 20%~30% ，而且失败率很大
+ profile testing ：
+    grequests is faster  20%~30%  than requests , but more failure
+    
+    testing get reports of 30 files, every request query 1 file, cost time: 
+      grequests 22.095 (with retry faild requests)  
+      requests 28.39
  
-    report 30 个，每次查询 1 个， 耗时:
-    grequests 22.095 (带重试，不重试根本没办法使用)  requests 28.39
  
- 有可能有时候是 vt 不可链接，这种情况还没处理，会抛异常
- 
- 2017_05_03 实际测试查询 5000 个样本， grequests 并没有优势，比 requests 还慢，暂时不知道原因
-            grequests 加 thread pool 还是不加 都慢
+ 2017_05_03 test query  5000 files ， grequests not have any advantage，more slower than requests ，even not know the reason.
+     testing framework: grequests + thread pool ,  grequests 
 '''
 
 # ------------------------------------------------------------------------------
@@ -36,7 +46,7 @@ VirusTotal_Proxy = None
 
 def _vt_make_request_param(resource):
     '''
-    生成 vt Request 时的 url 参数，应用在 report 和 rescan API 中
+    use in report and rescan
     :param resource: 
     :return: 
     '''
@@ -272,8 +282,9 @@ class JsonReport(object):
 
 class Report(JsonReport):
     '''
+    pre use 
     if Report(r).ok :
-        先判断是否是有效的 Report，然后再使用级别
+    to detect the report if is valid.
     '''
     # can be read by outside
     reliable_vendors = [u'BitDefender', u'Kaspersky', u'ESET-NOD32', u'Avira', u'Microsoft', u'McAfee']
@@ -404,10 +415,7 @@ class Report(JsonReport):
 
 
 def _vt_report_resources_to_set(reports):
-    '''
-    
-    '''
-    # resource 不一定是 md5
+    # resource can be md5 or others
     return set(e[u'resource'] for e in reports)
 
 
@@ -422,7 +430,7 @@ def _vt_default_request(req):
 def vt_report_from_resource(resource):
     '''
     :param resource: 
-    :return: 原始 vt 返回字符串，如果要转为 Report 实例，需要创建实例 / None
+    :return: raw content from VirusTotal.com request 
     '''
     import requests
     if not resource:
@@ -437,9 +445,8 @@ def vt_report_from_resource(resource):
 
 def vt_rescan_from_resource(resource):
     '''
-    使用 requests 做请求
     :param resource: 
-    :return: vt 返回结果字符串 / None
+    :return:  raw content from VirusTotal.com request  / None
     '''
     req = vt_make_request_rescan(resource)
     return _vt_default_request(req)
@@ -447,10 +454,10 @@ def vt_rescan_from_resource(resource):
 
 def vt_scan(file_content, file_name):
     '''
-    使用 requests 做请求
-    :param file_content: 文件二进制内容 
-    :param file_name: 可选
-    :return: vt 返回结果字符串 / None
+    
+    :param file_content: file binary content
+    :param file_name: <optional>
+    :return:  raw content from VirusTotal.com request / None
     '''
     q = {u'file_content': file_content}
     if file_name:
@@ -461,7 +468,6 @@ def vt_scan(file_content, file_name):
 
 def vt_batch_sync_report(hashs, split_unit_count=15):
     '''
-    用来做测试用，同步的查询慢，不采用
     :param hashs: 
     :param split_unit_count: 
     :return:  list of Report()
@@ -515,7 +521,7 @@ def _vt_batch_asnyc_framework_noretry(resources,
                                       split_unit_count,
                                       grequests_pool_size):
     '''
-    可以被 vt report 或者 vt rescan 使用，这两个都是每次请求可以查多个文件
+    use by report or rescan
     :param hashs:  must be isinstance(data, collections.Iterable):
     :return: list of Report()
     '''
@@ -543,10 +549,9 @@ def _vt_batch_async_framework(hashs, pfn_resource_to_request,
                               retry_times,
                               grequests_pool_size):
     '''
+    user by report or rescan
     
-    此函数供 report 和 rescan 使用
-    
-    :param hashs:  请传递的时候保证不重复 
+    :param hashs:  outer make sure not duplicate
         MD5, SHA1, SHA256, 
         vt_scan_id (sha256-timestamp as returned by the file upload API)
     :return: list of Report() 
@@ -555,7 +560,7 @@ def _vt_batch_async_framework(hashs, pfn_resource_to_request,
     return_reports = []
 
     i = 0
-    retry_times += 1  # 重试的功能移交到 _grequests_map_retry 中，重试更细化，这部分代码先留着
+    retry_times += 1  #  not more need, we retry in  _grequests_map_retry()
     all_resources = set(hashs)
     ok_resources = set()
     while len(return_reports) < len(hashs) and i < retry_times:
@@ -581,8 +586,6 @@ def _vt_batch_async_framework(hashs, pfn_resource_to_request,
 
 def vt_batch_async_report(hashs,**kwargs):
     '''
-    获取 vt 结果
-    
     :param hashs:  resources to get vt report
     :param if_analyzing_wait:  if report is tell analyzing, then get the report again util it not analyzing
     :param split_unit_count: every report's resource count
@@ -617,9 +620,11 @@ def vt_batch_async_report(hashs,**kwargs):
 
 def vt_batch_async_rescan(hashs, split_unit_count=15):
     '''
-    vt 已有文件，请求重扫
+    rescan the file exists in VirusTotal.com
     
-    可以使用 Report(<请求返回值>).file_not_exists 判断重新扫描的资源是不是在 vt 有，如果没有，可以使用 scan API 进行上传到 vt
+    use Report(<request.content>).file_not_exists to detect the file if is exists in VirusTotal.com, 
+      then can use scan to upload
+    
     :param hashs: 
     :param split_unit_count: 
     :return:  list of Report()
@@ -633,7 +638,7 @@ def vt_batch_async_rescan(hashs, split_unit_count=15):
 
 def _vt_batch_asnyc_scan_noretry(resources):
     '''
-    把文件放到 vt 扫描， 帮助函数
+    helper functions
     '''
     import grequests
 
@@ -659,11 +664,8 @@ def _vt_batch_asnyc_scan_noretry(resources):
 
 def vt_batch_async_scan(pairs):
     '''
-    把文件放到 vt 扫描
-    
-    这里就不再分批次请求了，全部请求，外部去做分批次调用这个函数就行了
     :param pairs: [
-        {'file_content': <二进制内容或文件句柄> , 'file_name': (可选参数), 'md5': }:, ...
+        {'file_content': <file binary content or file open handler> , 'file_name':<optional>, 'md5': }:, ...
         ]
     :return:  list of Report()
     
@@ -686,7 +688,7 @@ def vt_batch_async_scan(pairs):
             break
         r2 = _vt_batch_asnyc_scan_noretry(_md5_set_to_pairs(fail_md5s, pairs))
         if not r2 and len(fail_md5s) > 5:
-            break  # 5 个都查询失败了，应该是断网了
+            break  # we think the network is not available
         # 使用增量计算
         ok_md5s = _reports_md5_to_set(r2)
         all_md5s = fail_md5s
