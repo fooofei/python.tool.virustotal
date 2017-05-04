@@ -484,6 +484,11 @@ class ExceptionRequestsCollector(object):
         self.exception_requests = []
 
     def _grequests_exception_handler(self, request, exception):
+        '''
+        errors 
+        
+            ("bad handshake: SysCallError(-1, 'Unexpected EOF')",)
+        '''
         self.exception_requests.append(request)
         io_stderr_print(exception)
 
@@ -675,7 +680,7 @@ def vt_batch_async_scan(pairs):
     retry_times = 0  # 50 # 5 次都少
     all_md5s = _pairs_to_md5_set(pairs)
     ok_md5s = set()
-    while len(return_reports) < len(pairs) and i < retry_times:
+    while len(return_reports) < len(pairs):
         fail_md5s = all_md5s - ok_md5s
         if not fail_md5s:
             break
