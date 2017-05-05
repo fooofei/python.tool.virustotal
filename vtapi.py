@@ -29,6 +29,7 @@
 # CHANGELOG:
 # 2017-04-29 v1.00 fooofei: use grequests to wrap virustotal api
 # 2017-05-03 v1.01 fooofei: grequests retry
+# 2017-05-05 v1.10 fooofei: give sync version of scan API to normal use
 
 
 from __future__ import print_function
@@ -382,6 +383,10 @@ class Report(JsonReport):
                 r.append((k, self.report_vendor_vname(v)))
         return r
 
+    def scan_report(self):
+        header= [u'md5',u'scan_id',u'permalink',u'verbose_msg']
+        return [(e, self[e]) for e in header]
+
     def positives(self):
         return self[u'positives']
 
@@ -426,21 +431,27 @@ def _vt_default_request(req):
         return (res.content)
     return None
 
+def _vt_request_retry(req):
+    import requests
+    retry = req.pop(u'request_retry',1)
+    er = None
+    for _ in range(0,retry):
+        try:
+            return _vt_default_request(req)
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as er:
+            pass
+    return er
 
 def vt_report_from_resource(resource):
     '''
     :param resource: 
     :return: raw content from VirusTotal.com request 
     '''
-    import requests
     if not resource:
         return None
     req = vt_make_request_report(resource)
-    while 1:
-        try:
-            return _vt_default_request(req)
-        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
-            pass
+    req.update({u'request_retry':3})
+    return _vt_request_retry(req)
 
 
 def vt_rescan_from_resource(resource):
@@ -463,7 +474,16 @@ def vt_scan(file_content, file_name):
     if file_name:
         q[u'file_name'] = file_name
     req = vt_make_request_scan(**q)
-    return _vt_default_request(req)
+    req.update({u'request_retry': 3})
+    return _vt_request_retry(req)
+
+
+def vt_scan_from_fullpath(fullpath, fake_name=None):
+    '''
+    use in thread pool
+    '''
+    with open(fullpath,'rb') as fh:
+        return Report.dispatch_report(vt_scan(fh,fake_name if fake_name else os.path.basename(fullpath)))
 
 
 def vt_batch_sync_report(hashs, split_unit_count=15):

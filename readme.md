@@ -20,6 +20,7 @@ use Report().ok to detect report is valid or invalid.
 ### rescan
 
 ```python
+vt_batch_sync_report(...)
 vt_batch_async_rescan(...)
 
 tell VirusTotal to rescan resources we gived, not contains file not exists in VirusTotal.
@@ -33,6 +34,8 @@ return list of Report(), which only have msg, not contains scans which is vendor
 ### scan
 
 ```python
+vt_scan(...)
+vt_scan_from_fullpath(...)
 vt_batch_async_scan(...)
 
 upload file to VirusTotal.
