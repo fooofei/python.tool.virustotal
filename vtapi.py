@@ -431,11 +431,10 @@ def _vt_default_request(req):
         return (res.content)
     return None
 
-def _vt_request_retry(req):
+def _vt_request_retry(req, request_retry=1):
     import requests
-    retry = req.pop(u'request_retry',1)
     er = None
-    for _ in range(0,retry):
+    for _ in range(0,request_retry):
         try:
             return _vt_default_request(req)
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as er:
@@ -450,8 +449,7 @@ def vt_report_from_resource(resource):
     if not resource:
         return None
     req = vt_make_request_report(resource)
-    req.update({u'request_retry':3})
-    return _vt_request_retry(req)
+    return _vt_request_retry(req,request_retry=3)
 
 
 def vt_rescan_from_resource(resource):
@@ -474,8 +472,7 @@ def vt_scan(file_content, file_name):
     if file_name:
         q[u'file_name'] = file_name
     req = vt_make_request_scan(**q)
-    req.update({u'request_retry': 3})
-    return _vt_request_retry(req)
+    return _vt_request_retry(req,request_retry=3)
 
 
 def vt_scan_from_fullpath(fullpath, fake_name=None):
