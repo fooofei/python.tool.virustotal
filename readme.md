@@ -5,6 +5,7 @@
 ### get reports
 
 ```python
+vt_batch_sync_report(...)
 vt_batch_async_report(...)
 
 fetch files report which is already exists in VirusTotal.
@@ -20,7 +21,6 @@ use Report().ok to detect report is valid or invalid.
 ### rescan
 
 ```python
-vt_batch_sync_report(...)
 vt_batch_async_rescan(...)
 
 tell VirusTotal to rescan resources we gived, not contains file not exists in VirusTotal.
