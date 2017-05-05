@@ -2,7 +2,7 @@
 ## VirusTotal Public API 2.0 With grequests
 
 
-### get reports
+### get reports  https://www.virustotal.com/vtapi/v2/file/report
 
 >fetch files report which is already exists in VirusTotal.
 
@@ -21,7 +21,7 @@ return list of Report().
 
 use Report().ok to detect report is valid or invalid.
 
-### rescan
+### rescan https://www.virustotal.com/vtapi/v2/file/rescan
 
 > tell VirusTotal to rescan resources we gived, not contains file not exists in VirusTotal.
 
@@ -34,7 +34,7 @@ return list of Report(), which only have msg, not contains scans which is vendor
 ```
 
 
-### scan
+### scan https://www.virustotal.com/vtapi/v2/file/scan
 
 >upload file to VirusTotal.
 
