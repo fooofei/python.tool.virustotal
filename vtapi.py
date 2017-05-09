@@ -426,7 +426,11 @@ def _vt_report_resources_to_set(reports):
 
 def _vt_default_request(req):
     import requests
-    res = requests.request(req.pop(u'method'), req.pop(u'url'), **req)
+    import copy
+
+    # when retry, we cannot use pop, we have to save req
+    req_dup = copy.deepcopy(req)
+    res = requests.request(req_dup.pop(u'method',u'get'), req_dup.pop(u'url'), **req_dup)
     if res.status_code == 200 and res.content:
         return (res.content)
     return None
