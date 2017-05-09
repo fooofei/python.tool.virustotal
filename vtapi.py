@@ -93,6 +93,8 @@ def vt_make_request_report(anything):
 
     params = _vt_make_request_param(resource_hash)
     url = VirusTotal_Url_Base + u'/report'
+
+    # only method url is not requests param, others is requests params
     return {u'method': u'get',
             u'url': url,
             u'params': params,
@@ -426,11 +428,10 @@ def _vt_report_resources_to_set(reports):
 
 def _vt_default_request(req):
     import requests
-    import copy
 
     # when retry, we cannot use pop, we have to save req
-    req_dup = copy.deepcopy(req)
-    res = requests.request(req_dup.pop(u'method',u'get'), req_dup.pop(u'url'), **req_dup)
+    # req_dup = copy.deepcopy(req) # file handle cannot use deepcopy
+    res = requests.request(req.pop(u'method',u'get'), req.pop(u'url'), **req)
     if res.status_code == 200 and res.content:
         return (res.content)
     return None
@@ -439,10 +440,12 @@ def _vt_request_retry(req, request_retry=1):
     import requests
     er = None
     for _ in range(0,request_retry):
+        back_keys = [u'method', u'url']
+        back = {key: req.get(key, None) for key in back_keys}
         try:
             return _vt_default_request(req)
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as er:
-            pass
+            req.update(back)
     return er
 
 def vt_report_from_resource(resource):
