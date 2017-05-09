@@ -30,6 +30,7 @@
 # 2017-04-29 v1.00 fooofei: use grequests to wrap virustotal api
 # 2017-05-03 v1.01 fooofei: grequests retry
 # 2017-05-05 v1.10 fooofei: give sync version of scan API to normal use
+# 2017-05-09 v1.11 fooofei: fix requests param bug
 
 
 from __future__ import print_function
@@ -444,7 +445,8 @@ def _vt_request_retry(req, request_retry=1):
         back = {key: req.get(key, None) for key in back_keys}
         try:
             return _vt_default_request(req)
-        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as er:
+        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout,
+                requests.exceptions.SSLError) as er:
             req.update(back)
     return er
 
