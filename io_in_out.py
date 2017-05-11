@@ -358,21 +358,13 @@ def io_simple_check_hash(line):
     return io_simple_check_md5(line) or io_simple_check_sha1(line) or io_simple_check_sha256(line)
 
 
-def io_iter_split_step(data, split_unit_count):
+def _io_iter_split_step(data, split_unit_count):
     '''
     :param data:  must be isinstance(data, collections.Iterable):
     :param split_unit_count: 
-    :return:  iter(tuple)
+    :return: generator object  iter(tuple)
 
-    def test_io_split_step():
-        print (list(io_iter_split_step([1,2],5)))
-        print (list(io_iter_split_step([1,2,3,4,5,6,7],4)))
-        print (list(io_iter_split_step([1,2,3,4,5,6,7],3)))
-
-    [(1, 2)]
-    [(1, 2, 3, 4), (5, 6, 7)]
-    [(1, 2, 3), (4, 5, 6), (7,)]
-
+    see test
     '''
     a = iter(data)
     while True:
@@ -391,6 +383,25 @@ def io_iter_split_step(data, split_unit_count):
             yield tuple(r)
             r = []
 
+def io_iter_split_step(data, split_unit_count):
+    '''
+    :param data:  must be isinstance(data, collections.Iterable):
+    :param split_unit_count: 
+    :return: generator object  iter(tuple)
+
+    see test
+    '''
+
+    from itertools import islice
+    i = iter(data)
+    while True:
+        # slice return iterable
+        r = tuple(islice(i,split_unit_count))
+        if r:
+            yield (r)
+        else:
+            raise StopIteration
+
 
 '''
 end
@@ -407,8 +418,7 @@ def test_tupple():
     io_print(a)
 
 
-def test():
-    test_unicode_list()
+
 
 
 def test_path():
@@ -442,8 +452,34 @@ def test_io_is_path_valid():
     io_print(_func(u'c:\\21<'))
     io_print(_func(u'c:\\21>'))
 
-if __name__ == '__main__':
-    test()
+
+def test_io_split_step():
+    '''
+    
+    [(1, 2)]
+    [(1, 2, 3, 4), (5, 6, 7)]
+    [(1, 2, 3), (4, 5, 6), (7,)]
+
+    '''
+    cases = [
+        ([1,2], 5, [(1, 2)]),
+        ([1, 2, 3, 4, 5, 6, 7], 4, [(1, 2, 3, 4), (5, 6, 7)]),
+        ([1, 2, 3, 4, 5, 6, 7], 3, [(1, 2, 3), (4, 5, 6), (7,)])
+    ]
+
+    for e in cases:
+        assert (list(io_iter_split_step(e[0],e[1])) == e[2])
+        assert (list(_io_iter_split_step(e[0],e[1])) == e[2])
+
+    print (u'pass {0}'.format(test_io_split_step.__name__))
+
+def test():
+    test_unicode_list()
     test_tupple()
     test_path()
     test_io_is_path_valid()
+    test_io_split_step()
+
+
+if __name__ == '__main__':
+    test()
