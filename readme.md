@@ -52,3 +52,13 @@ vt_batch_async_scan(...)
 give list of `{'md5': , 'file_content': <file binary content> or <file open handler> , 'file_name':<optional>}` 
 return list of Report(), which only have msg, not contains scans which is vendor's results.
 ``` 
+
+### get hashes
+
+> fetch files hashes by search modifier
+
+```python
+vt_search(...)
+
+return generator object, per page 25 count
+```

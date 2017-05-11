@@ -13,7 +13,9 @@ from vtapi import vt_rescan_from_resource, \
     Report, vt_scan, JsonReport, \
     vt_make_resource_from_hashs, \
     vt_batch_async_rescan, \
-    vt_batch_async_scan, _vt_report_resources_to_set, vt_batch_async_report_fullpath
+    vt_batch_async_scan,\
+    _vt_report_resources_to_set, \
+    vt_batch_async_report_fullpath, vt_search
 
 
 # tests
@@ -191,6 +193,34 @@ def unit_test_vt_batch_scan():
     print('pass {} scan all file cost {}'.format(unit_test_vt_batch_scan.__name__, time.clock() - start_time))
 
 
+def test_vt_batch_async_report_fullpath():
+    fs = io_iter_files_from_arg(sys.argv[1::])
+
+    datas = [{'fullpath': e, 'md5': io_hash_fullpath(e, 'md5')} for e in fs]
+
+    vt_batch_async_report_fullpath(datas, force_rescan=False, upload_vt_not_exists=True)
+
+    for e in datas:
+        io_print(e['report'].simple_report())
+
+def test_vt_batch_scan():
+    resource_not_exists = 'b0f6d5758c76762233c29b74094cecd7'
+    resource_report = '3fdb88cb17f320b55a372ecf09e3e4c5'
+    resource_reports = [resource_report, '234234']
+    r = vt_report_from_resource('3fdb88cb17f320b55a372ecf09e3e4c5,1111')
+
+def test_vt_search():
+    search = u'HEUR.VBA. positives:3- ls:2017-04-22+'
+
+    ss = []
+    for result in vt_search(search_modifier=search):
+        sys.stdout.write(u'fetch {} '.format(len(result)))
+        ss.extend(result)
+        if len(ss) > 10000:
+            break
+
+    print (u'total {}'.format(len(ss)))
+
 def unit_test():
     resource_not_exists = 'b0f6d5758c76762233c29b74094cecd7'
     resource_report = '3fdb88cb17f320b55a372ecf09e3e4c5'
@@ -211,27 +241,12 @@ def unit_test():
     unit_test_batch_report_and_rescan()
     unit_test_vt_report_to_set()
     unit_test_vt_batch_scan()
-
+    test_vt_search()
 
 #
 #
 #
 
-def test_vt_batch_async_report_fullpath():
-    fs = io_iter_files_from_arg(sys.argv[1::])
-
-    datas = [{'fullpath': e, 'md5': io_hash_fullpath(e, 'md5')} for e in fs]
-
-    vt_batch_async_report_fullpath(datas, force_rescan=False, upload_vt_not_exists=True)
-
-    for e in datas:
-        io_print(e['report'].simple_report())
-
-def test_vt_batch_scan():
-    resource_not_exists = 'b0f6d5758c76762233c29b74094cecd7'
-    resource_report = '3fdb88cb17f320b55a372ecf09e3e4c5'
-    resource_reports = [resource_report, '234234']
-    r = vt_report_from_resource('3fdb88cb17f320b55a372ecf09e3e4c5,1111')
 
 
 if __name__ == '__main__':

@@ -31,6 +31,7 @@
 # 2017-05-03 v1.01 fooofei: grequests retry
 # 2017-05-05 v1.10 fooofei: give sync version of scan API to normal use
 # 2017-05-09 v1.11 fooofei: fix requests param bug
+# 2017-05-11 v1.20 fooofei: add vt search
 
 
 from __future__ import print_function
@@ -165,6 +166,25 @@ def vt_make_request_scan(file_content, file_name=u'file_from_pyvirustotal_make_r
             u'timeout': 20,
             u'proxies': VirusTotal_Proxy,
             }
+
+
+def vt_make_request_search(search_modifier, page_offset):
+    '''
+    :param search_modifier:  search keywords, can contains blank
+    :param page_offset: None or return by VirusTotal.com
+    :return: 
+    '''
+
+    # url = VirusTotal_Url_Base + u'/search'
+    url = u'https://www.virustotal.com/intelligence/search/programmatic/'
+    params = {u'page': page_offset or u'undefined', u'apikey': VirusTotal_API_Key, u'query': search_modifier}
+    return {
+        u'method': u'post',
+        u'url': url,
+        u'params': params,
+        u'timeout': 20,
+        u'proxies': VirusTotal_Proxy,
+    }
 
 
 def _vt_filter_valid_resources(hashs):
@@ -437,7 +457,7 @@ def _vt_default_request(req):
         return (res.content)
     return None
 
-def _vt_request_retry(req, request_retry=1):
+def _vt_request_retry(req, request_retry=2):
     import requests
     er = None
     for _ in range(0,request_retry):
@@ -448,7 +468,7 @@ def _vt_request_retry(req, request_retry=1):
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout,
                 requests.exceptions.SSLError) as er:
             req.update(back)
-    return er
+    raise er
 
 def vt_report_from_resource(resource):
     '''
@@ -491,6 +511,35 @@ def vt_scan_from_fullpath(fullpath, fake_name=None):
     with open(fullpath,'rb') as fh:
         return Report.dispatch_report(vt_scan(fh,fake_name if fake_name else os.path.basename(fullpath)))
 
+def vt_search(search_modifier):
+    '''
+    :param search_modifier: 
+    :return: generator object, per page 25 count
+    '''
+    import json
+    page_offset= None
+
+    while True:
+        req = vt_make_request_search(search_modifier=search_modifier,
+                                 page_offset=page_offset)
+        r = _vt_request_retry(req,request_retry=3)
+        if not r :
+            raise StopIteration
+        try:
+            resp_dict = json.loads(r)
+            if not (resp_dict.get(u'result',0)==1):
+                raise ValueError(resp_dict.get(u'error',u''))
+            # every page 25 count
+            h = resp_dict.get(u'hashes',[])
+            if not h:
+                raise StopIteration
+            yield h
+            page_offset = resp_dict.get(u'next_page',None)
+            # len(page_offset) = 1500
+            if not page_offset: # no more hashes
+                raise StopIteration
+        except ValueError:
+            raise StopIteration
 
 def vt_batch_sync_report(hashs, split_unit_count=15):
     '''
