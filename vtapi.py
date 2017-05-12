@@ -32,6 +32,7 @@
 # 2017-05-05 v1.10 fooofei: give sync version of scan API to normal use
 # 2017-05-09 v1.11 fooofei: fix requests param bug
 # 2017-05-11 v1.20 fooofei: add vt search
+# 2017-05-12 v2.00 fooofei: 增加 API 后需要调整结构
 
 
 from __future__ import print_function
@@ -44,22 +45,20 @@ from io_in_out import *
 from vtapi_key import VirusTotal_API_Key
 
 VirusTotal_Url_Base = u'https://www.virustotal.com/vtapi/v2/file'
-VirusTotal_Proxy = None
+
+VirusTotal_Per_Report_Count = 20  # default 20
+VirusTotal_Per_Rescan_Count = 4  # default 4
+VirusTotal_Per_Scan_Count = 1  # must 1
+VirusTotal_Per_Download_Count = 1  # must 1
 
 
-def _vt_make_request_param(resource):
-    '''
-    use in report and rescan
-    :param resource: 
-    :return: 
-    '''
-    return {u'apikey': VirusTotal_API_Key,
-            u'resource': resource}
+def _vt_make_key():
+    return {u'apikey': VirusTotal_API_Key}
 
 
 def vt_make_request_report(anything):
     '''
-    support batch (max 4 )
+    VirusTotal.com says support batch (max 4 )
     :param anything: 
     :return: 
 
@@ -90,18 +89,24 @@ def vt_make_request_report(anything):
         return []
 
      '''
+    if not anything:
+        return None
     # todo with anything
     resource_hash = anything
 
-    params = _vt_make_request_param(resource_hash)
+    params = _vt_make_key()
+    params.update({u'resource': resource_hash})
     url = VirusTotal_Url_Base + u'/report'
 
     # only method url is not requests param, others is requests params
     return {u'method': u'get',
             u'url': url,
-            u'params': params,
-            u'timeout': 8,
-            u'proxies': VirusTotal_Proxy,
+            u'request_retry': 3,
+            u'requests_kwargs': {
+                u'params': params,
+                u'timeout': 8,
+                u'proxies': VirusTotal_Proxy,
+            }
             }
 
 
@@ -124,16 +129,22 @@ def vt_make_request_rescan(anything):
       {"response_code": 0, "resource": "b0f6d5758c76762233c29b74094cecd7"}
 
     '''
+    if not anything:
+        return None
     # todo with anything
     resource_hash = anything
 
-    params = _vt_make_request_param(resource_hash)
+    params = _vt_make_key()
+    params.update({u'resource': resource_hash})
     url = VirusTotal_Url_Base + u'/rescan'
     return {u'method': u'post',
             u'url': url,
-            u'params': params,
-            u'timeout': 5,
-            u'proxies': VirusTotal_Proxy,
+            u'request_retry': 3,
+            u'requests_kwargs': {
+                u'params': params,
+                u'timeout': 5,
+                u'proxies': VirusTotal_Proxy,
+            }
             }
 
 
@@ -156,15 +167,20 @@ def vt_make_request_scan(file_content, file_name=u'file_from_pyvirustotal_make_r
         }
     
     '''
-    params = {u'apikey': VirusTotal_API_Key}
+    if not file_content:
+        return None
+    params = _vt_make_key()
     files = {u'file': (file_name, file_content)}
     url = VirusTotal_Url_Base + u'/scan'
     return {u'method': u'post',
             u'url': url,
-            u'params': params,
-            u'files': files,
-            u'timeout': 20,
-            u'proxies': VirusTotal_Proxy,
+            u'request_retry': 2,
+            u'requests_kwargs': {
+                u'params': params,
+                u'files': files,
+                u'timeout': 20,
+                u'proxies': VirusTotal_Proxy,
+            }
             }
 
 
@@ -177,27 +193,54 @@ def vt_make_request_search(search_modifier, page_offset):
 
     # url = VirusTotal_Url_Base + u'/search'
     url = u'https://www.virustotal.com/intelligence/search/programmatic/'
-    params = {u'page': page_offset or u'undefined', u'apikey': VirusTotal_API_Key, u'query': search_modifier}
+    params = _vt_make_key()
+    params.update({u'page': page_offset or u'undefined', u'query': search_modifier})
+
     return {
         u'method': u'post',
         u'url': url,
-        u'params': params,
-        u'timeout': 20,
-        u'proxies': VirusTotal_Proxy,
+        u'request_retry': 3,
+        u'requests_kwargs': {
+            u'params': params,
+            u'timeout': 20,
+            u'proxies': VirusTotal_Proxy,
+        }
+
     }
 
 
-def _vt_filter_valid_resources(hashs):
+def vt_make_request_download(hashvar):
+    if not hashvar:
+        return None
+    url = VirusTotal_Url_Base + u'/download'
+    # only for personal key
+    # url = u'https://www.virustotal.com/intelligence/download/'
+    params = _vt_make_key()
+    params.update({u'hash': hashvar})
+    return {u'method': u'get',
+            u'url': url,
+            u'request_retry': 4,
+            u'requests_kwargs': {
+                u'params': params,
+                u'timeout': 20,
+                u'proxies': VirusTotal_Proxy,
+            }
+            }
+
+
+def _vt_filter_valid_resources(hashes):
     import re
+    if not hashes:
+        return []
     _SCAN_ID_RE = re.compile(r"^[a-fA-F0-9]{64}-[0-9]{10}$")
-    return filter(lambda e: io_simple_check_hash(e) or _SCAN_ID_RE.match(e), hashs)
+    return filter(lambda e: io_simple_check_hash(e) or _SCAN_ID_RE.match(e), hashes)
 
 
 def vt_make_resource_from_hashs(hashs):
     '''
     从 tuple 或者 list 的 hash 集合中获取 resource
     :param hashs: 
-    :return:  valid resource or None
+    :return:  valid resource 
     
     VirusTotal says :
      You can also specify a CSV list made up of a combination of hashes and scan_ids 
@@ -206,11 +249,11 @@ def vt_make_resource_from_hashs(hashs):
     
     '''
     if not hashs:
-        return None
+        return u''
     valid_hashs = _vt_filter_valid_resources(hashs)
     if valid_hashs:
         return u','.join(valid_hashs)
-    return None
+    return u''
 
 
 class VtApiError(ValueError):
@@ -449,36 +492,43 @@ def _vt_report_resources_to_set(reports):
 
 def _vt_default_request(req):
     import requests
-
-    # when retry, we cannot use pop, we have to save req
-    # req_dup = copy.deepcopy(req) # file handle cannot use deepcopy
-    res = requests.request(req.pop(u'method',u'get'), req.pop(u'url'), **req)
+    if not req:
+        return None
+    res = requests.request(req.get(u'method', u'get')
+                           , req.get(u'url')
+                           , **req.get(u'requests_kwargs'))
     if res.status_code == 200 and res.content:
         return (res.content)
     return None
 
-def _vt_request_retry(req, request_retry=2):
+
+def _vt_default_request_retry(req):
     import requests
+    from requests import sessions
+    if not req:
+        return None
     er = None
-    for _ in range(0,request_retry):
-        back_keys = [u'method', u'url']
-        back = {key: req.get(key, None) for key in back_keys}
-        try:
-            return _vt_default_request(req)
-        except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout,
-                requests.exceptions.SSLError) as er:
-            req.update(back)
+    request_retry = req.get(u'request_retry', 1)
+    with sessions.Session() as ses:
+        for _ in range(request_retry):
+            try:
+                r = ses.request(method=req.get(u'method', u'get')
+                                , url=req.get(u'url')
+                                , **req.get(u'requests_kwargs'))
+                return r.content if r.status_code == 200 and r.content else None
+            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout,
+                    requests.exceptions.SSLError) as er:
+                pass
     raise er
+
 
 def vt_report_from_resource(resource):
     '''
     :param resource: 
     :return: raw content from VirusTotal.com request 
     '''
-    if not resource:
-        return None
     req = vt_make_request_report(resource)
-    return _vt_request_retry(req,request_retry=3)
+    return _vt_default_request_retry(req)
 
 
 def vt_rescan_from_resource(resource):
@@ -487,7 +537,7 @@ def vt_rescan_from_resource(resource):
     :return:  raw content from VirusTotal.com request  / None
     '''
     req = vt_make_request_rescan(resource)
-    return _vt_default_request(req)
+    return _vt_default_request_retry(req)
 
 
 def vt_scan(file_content, file_name):
@@ -501,15 +551,16 @@ def vt_scan(file_content, file_name):
     if file_name:
         q[u'file_name'] = file_name
     req = vt_make_request_scan(**q)
-    return _vt_request_retry(req,request_retry=3)
+    return _vt_default_request_retry(req)
 
 
 def vt_scan_from_fullpath(fullpath, fake_name=None):
     '''
     use in thread pool
     '''
-    with open(fullpath,'rb') as fh:
-        return Report.dispatch_report(vt_scan(fh,fake_name if fake_name else os.path.basename(fullpath)))
+    with open(fullpath, 'rb') as fh:
+        return Report.dispatch_report(vt_scan(fh, fake_name if fake_name else os.path.basename(fullpath)))
+
 
 def vt_search(search_modifier):
     '''
@@ -517,46 +568,43 @@ def vt_search(search_modifier):
     :return: generator object, per page 25 count
     '''
     import json
-    page_offset= None
+    page_offset = None
 
     while True:
-        req = vt_make_request_search(search_modifier=search_modifier,
-                                 page_offset=page_offset)
-        r = _vt_request_retry(req,request_retry=3)
-        if not r :
+        r = _vt_default_request_retry(vt_make_request_search(search_modifier=search_modifier,
+                                                             page_offset=page_offset))
+        if not r:
             raise StopIteration
         try:
             resp_dict = json.loads(r)
-            if not (resp_dict.get(u'result',0)==1):
-                raise ValueError(resp_dict.get(u'error',u''))
+            if not (resp_dict.get(u'result', 0) == 1):
+                raise ValueError(resp_dict.get(u'error', u''))
             # every page 25 count
-            h = resp_dict.get(u'hashes',[])
+            h = resp_dict.get(u'hashes', [])
             if not h:
                 raise StopIteration
             yield h
-            page_offset = resp_dict.get(u'next_page',None)
+            page_offset = resp_dict.get(u'next_page', None)
             # len(page_offset) = 1500
-            if not page_offset: # no more hashes
+            if not page_offset:  # no more hashes
                 raise StopIteration
         except ValueError:
             raise StopIteration
 
-def vt_batch_sync_report(hashs, split_unit_count=15):
+
+def vt_batch_sync_report(hashs):
     '''
     :param hashs: 
-    :param split_unit_count: 
     :return:  list of Report()
     '''
     return_reports = []
+    func_reports_extend = lambda r: return_reports.extend(r) if r else None
 
-    _fn = lambda x, y: y(x) if x else None
-
-    for ev in io_iter_split_step(data=hashs, split_unit_count=split_unit_count):
-        reduce(_fn, [ev,
-                     vt_make_resource_from_hashs,
-                     vt_report_from_resource,
-                     Report.dispatch_report,
-                     return_reports.extend])
+    for ev in io_iter_split_step(data=hashs, split_unit_count=VirusTotal_Per_Report_Count):
+        x = vt_make_resource_from_hashs(ev)  # hashes list -> '<hash1>,<hash2>,<...>'
+        x = vt_report_from_resource(x)  # -> return from VirusTotal.com raw content
+        x = Report.dispatch_report(x)  # -> list of Report
+        func_reports_extend(x)
     return return_reports
 
 
@@ -572,6 +620,7 @@ class ExceptionRequestsCollector(object):
         '''
         self.exception_requests.append(request)
         io_stderr_print(exception)
+        io_stderr_print(request.kwargs.items())
 
 
 def _grequests_map_retry(requests, size=None, gtimeout=None):
@@ -579,11 +628,13 @@ def _grequests_map_retry(requests, size=None, gtimeout=None):
     ret = []
 
     this_requests = requests
+
     while len(ret) < len(requests):
         collector = ExceptionRequestsCollector()
         responses = grequests.map(this_requests, size=size, exception_handler=collector._grequests_exception_handler,
                                   gtimeout=gtimeout)
-        ret.extend(filter(lambda e: True if e else False, responses))
+        valid_responses = filter(lambda e: True if e else False, responses)
+        ret.extend(valid_responses)
         exception_requests = collector.exception_requests
         if len(exception_requests) == len(this_requests):
             # all fail
@@ -591,26 +642,68 @@ def _grequests_map_retry(requests, size=None, gtimeout=None):
         this_requests = exception_requests
     return ret
 
-def _vt_batch_asnyc_framework_noretry(resources,
-                                      pfn_resource_to_request,
-                                      split_unit_count,
-                                      grequests_pool_size):
+
+def _vt_batch_async_framework(datas
+                              , pfns_datas_to_requests_param
+                              , split_unit_count
+                              , grequests_pool_size):
     '''
     use by report or rescan
     :param hashs:  must be isinstance(data, collections.Iterable):
-    :return: list of Report()
+          caller make sure not duplicate
+            MD5, SHA1, SHA256, 
+            vt_scan_id (sha256-timestamp as returned by the file upload API)
+    :return: list of grequests responses
+    
+    retry version backup :
+        hashs = _vt_filter_valid_resources(hashs)
+        return_reports = []
+    
+        i = 0
+        retry_times += 1  #  not more need, we retry in  _grequests_map_retry()
+        all_resources = set(hashs)
+        ok_resources = set()
+        while len(return_reports) < len(hashs) and i < retry_times:
+            fail_resources = all_resources - ok_resources
+            if not fail_resources:
+                break
+            r2 = _vt_batch_asnyc_framework_noretry(fail_resources,
+                                                   pfn_resource_to_request=pfn_resource_to_request,
+                                                   split_unit_count=split_unit_count,
+                                                   grequests_pool_size=grequests_pool_size)
+    
+            if not r2 and len(fail_resources) / split_unit_count > 10:
+                break  # 10 次(不一定是 10 个)都查询失败了，应该是断网了
+    
+            # 使用增量计算
+            ok_resources = _vt_report_resources_to_set(r2)
+            all_resources = fail_resources
+            return_reports.extend(r2)
+            i += 1
+    
+        return return_reports
+    
     '''
     import grequests
 
-    reqs = []
-    for ev in io_iter_split_step(data=resources, split_unit_count=split_unit_count):
-        e = vt_make_resource_from_hashs(ev)
-        if e:
-            req = pfn_resource_to_request(e)
-            q = grequests.request(req.pop(u'method'), req.pop(u'url'), **req)
-            reqs.append(q)
+    if not datas:
+        return []
 
-    responses = _grequests_map_retry(reqs, size=grequests_pool_size, gtimeout=20)
+    reqs = []
+
+    func_req_make_request = lambda req: grequests.request(req.get(u'method'), req.get(u'url'),
+                                                          **req.get(u'requests_kwargs')) if req else None
+
+    func_request_append = lambda q: reqs.append(q) if q else None
+
+    for ev in io_iter_split_step(data=datas, split_unit_count=split_unit_count):
+        x = pfns_datas_to_requests_param(ev)
+        x = func_req_make_request(x)
+        func_request_append(x)
+    return _grequests_map_retry(reqs, size=grequests_pool_size, gtimeout=20)
+
+
+def _vt_responses_to_reports(responses):
     return_reports = []
     for e in responses:
         if e and e.status_code == 200 and e.content:
@@ -619,157 +712,102 @@ def _vt_batch_asnyc_framework_noretry(resources,
     return return_reports
 
 
-def _vt_batch_async_framework(hashs, pfn_resource_to_request,
-                              split_unit_count,
-                              retry_times,
-                              grequests_pool_size):
+def vt_batch_async_report(hashes, **kwargs):
     '''
-    user by report or rescan
-    
-    :param hashs:  outer make sure not duplicate
-        MD5, SHA1, SHA256, 
-        vt_scan_id (sha256-timestamp as returned by the file upload API)
-    :return: list of Report() 
-    '''
-    hashs = _vt_filter_valid_resources(hashs)
-    return_reports = []
-
-    i = 0
-    retry_times += 1  #  not more need, we retry in  _grequests_map_retry()
-    all_resources = set(hashs)
-    ok_resources = set()
-    while len(return_reports) < len(hashs) and i < retry_times:
-        fail_resources = all_resources - ok_resources
-        if not fail_resources:
-            break
-        r2 = _vt_batch_asnyc_framework_noretry(fail_resources,
-                                               pfn_resource_to_request=pfn_resource_to_request,
-                                               split_unit_count=split_unit_count,
-                                               grequests_pool_size=grequests_pool_size)
-
-        if not r2 and len(fail_resources) / split_unit_count > 10:
-            break  # 10 次(不一定是 10 个)都查询失败了，应该是断网了
-
-        # 使用增量计算
-        ok_resources = _vt_report_resources_to_set(r2)
-        all_resources = fail_resources
-        return_reports.extend(r2)
-        i += 1
-
-    return return_reports
-
-
-def vt_batch_async_report(hashs,**kwargs):
-    '''
-    :param hashs:  resources to get vt report
-    :param if_analyzing_wait:  if report is tell analyzing, then get the report again util it not analyzing
-    :param split_unit_count: every report's resource count
-    :return:  list of Report()
+    :param hashes:   resources to get vt report
+    :param kwargs: 
+        request_tasks(split_unit_count): int 
+        grequests_pool_size: int
+        if_analyzing_wait: bool, if report is tell analyzing, then get the report again util it not analyzing
+    :return: list of Report()
     '''
     import time
     from functools import partial
 
+    pfns_datas_to_requests_param = \
+        lambda e: vt_make_request_report(vt_make_resource_from_hashs(_vt_filter_valid_resources(e)))
+
     # currying the function _vt_batch_async_framework()
-    _small_func = partial(_vt_batch_async_framework,
-                          pfn_resource_to_request=vt_make_request_report,
-                          split_unit_count=kwargs.get(u'request_tasks',15),
-                          grequests_pool_size=kwargs.get(u'grequests_pool_size',4),
-                          retry_times=0)
-    rs = _small_func(hashs)
+    _small_func = partial(_vt_batch_async_framework
+                          , pfns_datas_to_requests_param=pfns_datas_to_requests_param
+                          , split_unit_count=kwargs.get(u'request_tasks', VirusTotal_Per_Report_Count)
+                          , grequests_pool_size=kwargs.get(u'grequests_pool_size', 4))
+
+    _hashes_to_reports = lambda h: _vt_responses_to_reports(_small_func(h))
+
+    rs = _hashes_to_reports(hashes)
     start_time = time.clock()
-    v =  kwargs.get(u'if_analyzing_wait',False)
+    v = kwargs.get(u'if_analyzing_wait', False)
     while v:
         # set the time limit
-        if int(time.clock() - start_time) > 60 * len(hashs):
+        if int(time.clock() - start_time) > 60 * len(hashes):
             break
         analyzing_reports = filter(lambda e: e.analyzing, rs)
         analyzing_md5s = [e[u'md5'] for e in analyzing_reports]
         if analyzing_md5s:
             rs = filter(lambda e: not e.analyzing, rs)
             time.sleep(4)
-            rs.extend(_small_func(analyzing_md5s))
+            rs.extend(_hashes_to_reports(analyzing_md5s))
         else:
             break  # no more to get report
     return rs
 
 
-def vt_batch_async_rescan(hashs, split_unit_count=15):
+def vt_batch_async_rescan(hashes, **kwargs):
     '''
     rescan the file exists in VirusTotal.com
     
     use Report(<request.content>).file_not_exists to detect the file if is exists in VirusTotal.com, 
       then can use scan to upload
     
-    :param hashs: 
-    :param split_unit_count: 
+    :param hashes: 
+    :param kwargs: 
+        request_tasks(split_unit_count): int 
+        grequests_pool_size: int
     :return:  list of Report()
     '''
-    return _vt_batch_async_framework(hashs,
-                                     pfn_resource_to_request=vt_make_request_rescan,
-                                     split_unit_count=split_unit_count,
-                                     retry_times=0,
-                                     grequests_pool_size=4)
+
+    pfns_datas_to_requests_param = \
+        lambda e: vt_make_request_rescan(vt_make_resource_from_hashs(_vt_filter_valid_resources(e)))
+
+    v = _vt_batch_async_framework(hashes
+                                  , pfns_datas_to_requests_param=pfns_datas_to_requests_param
+                                  , split_unit_count=kwargs.get(u'request_tasks', VirusTotal_Per_Rescan_Count)
+                                  , grequests_pool_size=kwargs.get(u'grequests_pool_size', 4))
+    return _vt_responses_to_reports(v)
 
 
-def _vt_batch_asnyc_scan_noretry(resources):
+def vt_batch_async_scan(pairs, **kwargs):
     '''
-    helper functions
-    '''
-    import grequests
-
-    reqs = []
-    for ev in resources:
-        fc = ev[u'file_content']
-        fn = ev[u'file_name'] if u'file_name' in ev else None
-        if fn:
-            req = vt_make_request_scan(file_content=fc, file_name=fn)
-        else:
-            req = vt_make_request_scan(file_content=fc)
-        q = grequests.request(req.pop(u'method'), req.pop(u'url'), **req)
-        reqs.append(q)
-
-    responses = _grequests_map_retry(reqs, size=8)
-    return_reports = []
-    for e in responses:
-        if e and e.status_code == 200 and e.content:
-            v = Report.dispatch_report(e.content)
-            return_reports.extend(v)
-    return return_reports
-
-
-def vt_batch_async_scan(pairs):
-    '''
-    :param pairs: [
-        {'file_content': <file binary content or file open handler> , 'file_name':<optional>, 'md5': }:, ...
+    :param pairs: 
+        [
+            {'file_content': <file binary content or file open handler> , 'file_name':<optional>, 'md5': }:, ...
         ]
+    :param kwargs: 
+        grequests_pool_size: int
     :return:  list of Report()
     
     刚上传成功后， get report ，也可能会有 file not exists, 手动去网站查询，是可以查询到的
     
     '''
-    _pairs_to_md5_set = lambda p: set(e[u'md5'] for e in p)
-    _md5_set_to_pairs = lambda md5s, p: filter(lambda e: e[u'md5'] in md5s, p)
-    _reports_md5_to_set = lambda reports: set(e[u'md5'] for e in reports)
 
-    return_reports = []
+    def _datas_to_request_scan_param(pps):
+        if not pps:
+            return None
+        assert (len(pps) == 1)
+        ev = pps[0]
+        fc = ev[u'file_content']
+        fn = ev[u'file_name'] if u'file_name' in ev else None
+        if fn:
+            return vt_make_request_scan(file_content=fc, file_name=fn)
+        else:
+            return vt_make_request_scan(file_content=fc)
 
-    i = 0
-    retry_times = 0  # 50 # 5 次都少
-    all_md5s = _pairs_to_md5_set(pairs)
-    ok_md5s = set()
-    while len(return_reports) < len(pairs):
-        fail_md5s = all_md5s - ok_md5s
-        if not fail_md5s:
-            break
-        r2 = _vt_batch_asnyc_scan_noretry(_md5_set_to_pairs(fail_md5s, pairs))
-        if not r2 and len(fail_md5s) > 5:
-            break  # we think the network is not available
-        # 使用增量计算
-        ok_md5s = _reports_md5_to_set(r2)
-        all_md5s = fail_md5s
-        return_reports.extend(r2)
-        i += 1
-    return return_reports
+    v = _vt_batch_async_framework(pairs
+                                  , pfns_datas_to_requests_param=_datas_to_request_scan_param
+                                  , split_unit_count=VirusTotal_Per_Scan_Count
+                                  , grequests_pool_size=kwargs.get(u'grequests_pool_size', 4))
+    return _vt_responses_to_reports(v)
 
 
 def vt_batch_async_scan_fullpath(datas):
@@ -778,17 +816,18 @@ def vt_batch_async_scan_fullpath(datas):
          [
               {u'fullpath': , } , {u'md5': }, 
         ] 
-    :return: 
+    :return: list of Reports
     '''
 
     # dict 的 update() 返回 None , 继续 or e ，那么会返回 e ，方便把更新过的 dict 收集到 list 中
-    _add_file_content = lambda e: e.update({u'file_content':
-                                                open(e[six.binary_type(u'fullpath')], six.binary_type(u'rb'))
+    _add_file_content = lambda e: e.update({u'file_content': open(e[u'fullpath'], 'rb')
                                             }) or e
-
+    r = []
     for ev in io_iter_split_step(datas, 20):
         ev = map(_add_file_content, ev)
-        vt_batch_async_scan(ev)
+        v = vt_batch_async_scan(ev)
+        r.extend(v)
+    return r
 
 
 def vt_batch_async_report_fullpath(datas_list, force_rescan=False, upload_vt_not_exists=True):
@@ -849,6 +888,28 @@ def vt_batch_async_report_fullpath(datas_list, force_rescan=False, upload_vt_not
         e.update({u'report': reports_all_dict[e[u'md5']]})
 
     return reports_all
+
+
+def vt_batch_async_download(path_save_dir, hashes, **kwargs):
+    pfns_datas_to_requests_param = lambda e: vt_make_request_download(e[0]) if e else None
+    v = _vt_batch_async_framework(hashes
+                                  , pfns_datas_to_requests_param=pfns_datas_to_requests_param
+                                  , split_unit_count=VirusTotal_Per_Download_Count
+
+                                  # 8 的时候 总有 2 个 ("bad handshake: SysCallError(-1, 'Unexpected EOF')",) 错误
+                                  # 也不是固定的 2 个 hash 错误， 但一定是固定的 2 个
+                                  , grequests_pool_size=kwargs.get(u'grequests_pool_size', 6))
+    #
+    # not find a way to save hash with Requests, use it to check Response valid
+    #
+    for e in v:
+        con = e.content
+        m = io_hash_memory(con)
+        p = os.path.join(path_save_dir, u'{0}'.format(m))
+        if os.path.exists(p):
+            os.remove(p)
+        with open(p, 'wb') as f:
+            f.write(con)
 
 
 def vt_check_reports_equal(r_new, r_old):

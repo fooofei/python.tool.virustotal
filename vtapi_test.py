@@ -101,7 +101,7 @@ def unit_test_vt_make_resource_from_hashs():
     assert (','.join(valid_hashs) == vt_make_resource_from_hashs(valid_hashs + [invalid_hash1]))
     assert (','.join(valid_hashs) == vt_make_resource_from_hashs(valid_hashs + [invalid_hash2]))
     assert (','.join(valid_hashs) == vt_make_resource_from_hashs(valid_hashs + [invalid_hash1, invalid_hash2]))
-    assert (vt_make_resource_from_hashs([invalid_hash1, invalid_hash2]) is None)
+    assert (vt_make_resource_from_hashs([invalid_hash1, invalid_hash2]) == u'')
 
     print('pass {}'.format(unit_test_vt_make_resource_from_hashs.__name__))
 
@@ -216,7 +216,7 @@ def test_vt_search():
     for result in vt_search(search_modifier=search):
         sys.stdout.write(u'fetch {} '.format(len(result)))
         ss.extend(result)
-        if len(ss) > 10000:
+        if len(ss) > 20:
             break
 
     print (u'total {}'.format(len(ss)))

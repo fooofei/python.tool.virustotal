@@ -1,5 +1,5 @@
 
-## VirusTotal Public API 2.0 With grequests
+## VirusTotal Private API 2.0 With grequests
 
 
 ### get reports  https://www.virustotal.com/vtapi/v2/file/report
