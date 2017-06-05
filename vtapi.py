@@ -450,7 +450,7 @@ class Report(JsonReport):
         return r
 
     def scan_report(self):
-        header= [u'md5',u'scan_id',u'permalink',u'verbose_msg']
+        header = [u'md5', u'state', u'scan_id', u'permalink', u'verbose_msg']
         return [(e, self[e]) for e in header]
 
     def positives(self):
@@ -893,12 +893,6 @@ def vt_batch_async_report_fullpath(datas_list, force_rescan=False, upload_vt_not
 def vt_batch_async_download(path_save_dir, hashes, **kwargs):
     from itertools import izip
 
-    def _save_content(p,c):
-        if os.path.exists(p):
-            os.remove(p)
-        with open(p,'wb') as f:
-            f.write(c)
-
     pfns_datas_to_requests_param = lambda e: vt_make_request_download(e[0]) if e else None
     v = _vt_batch_async_framework(hashes
                                   , pfns_datas_to_requests_param=pfns_datas_to_requests_param
@@ -907,20 +901,17 @@ def vt_batch_async_download(path_save_dir, hashes, **kwargs):
                                   # 8 的时候 总有 2 个 ("bad handshake: SysCallError(-1, 'Unexpected EOF')",) 错误
                                   # 也不是固定的 2 个 hash 错误， 但一定是固定的 2 个
                                   , grequests_pool_size=kwargs.get(u'grequests_pool_size', 6))
-    #
-    # not find a way to save hash with Requests, use it to check Response valid
-    #
 
-    if len(hashes) == len(v):
-        for i in izip(hashes,v):
-            p = os.path.join(path_save_dir,u'{0}'.format(i[0]))
-            _save_content(p,i[1].content)
-    else:
-        for e in v:
-            con = e.content
-            m = io_hash_memory(con)
-            p = os.path.join(path_save_dir, u'{0}'.format(m))
-            _save_content(p,con)
+    for res,h in izip(v,hashes):
+        con = res.content
+        m = io_hash_memory(con)
+        assert (m == h)
+        p = os.path.join(path_save_dir, u'{0}'.format(m))
+        if os.path.exists(p):
+            os.remove(p)
+        with open(p, 'wb') as f:
+            f.write(con)
+
 
 
 def vt_check_reports_equal(r_new, r_old):
