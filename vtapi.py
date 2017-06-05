@@ -27,12 +27,13 @@
 
 # ------------------------------------------------------------------------------
 # CHANGELOG:
-# 2017-04-29 v1.00 fooofei: use grequests to wrap virustotal api
-# 2017-05-03 v1.01 fooofei: grequests retry
-# 2017-05-05 v1.10 fooofei: give sync version of scan API to normal use
-# 2017-05-09 v1.11 fooofei: fix requests param bug
-# 2017-05-11 v1.20 fooofei: add vt search
-# 2017-05-12 v2.00 fooofei: 增加 API 后需要调整结构
+# 2017-04-29 v1.00  use grequests to wrap virustotal api
+# 2017-05-03 v1.01  grequests retry
+# 2017-05-05 v1.10  give sync version of scan API to normal use
+# 2017-05-09 v1.11  fix requests param bug
+# 2017-05-11 v1.20  add vt search
+# 2017-05-12 v2.00  增加 API 后需要调整结构
+# 2017-06-05 v2.01  add vt_down
 
 
 from __future__ import print_function
@@ -590,6 +591,11 @@ def vt_search(search_modifier):
                 raise StopIteration
         except ValueError:
             raise StopIteration
+
+
+def vt_download(hashvar):
+    req = vt_make_request_download(hashvar)
+    return _vt_default_request_retry(req)
 
 
 def vt_batch_sync_report(hashs):
