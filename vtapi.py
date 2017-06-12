@@ -225,6 +225,7 @@ def vt_make_request_download(hashvar):
                 u'params': params,
                 u'timeout': 20,
                 u'proxies': VirusTotal_Proxy,
+                u'stream':True,
             }
             }
 
@@ -491,19 +492,12 @@ def _vt_report_resources_to_set(reports):
     return set(e[u'resource'] for e in reports)
 
 
+
 def _vt_default_request(req):
-    import requests
-    if not req:
-        return None
-    res = requests.request(req.get(u'method', u'get')
-                           , req.get(u'url')
-                           , **req.get(u'requests_kwargs'))
-    if res.status_code == 200 and res.content:
-        return (res.content)
-    return None
-
-
-def _vt_default_request_retry(req):
+    '''
+    if use requests streaming, we cannot return r.content direct,
+    we should return response instance.
+    '''
     import requests
     from requests import sessions
     if not req:
@@ -513,14 +507,20 @@ def _vt_default_request_retry(req):
     with sessions.Session() as ses:
         for _ in range(request_retry):
             try:
-                r = ses.request(method=req.get(u'method', u'get')
+                return ses.request(method=req.get(u'method', u'get')
                                 , url=req.get(u'url')
                                 , **req.get(u'requests_kwargs'))
-                return r.content if r.status_code == 200 and r.content else None
             except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout,
                     requests.exceptions.SSLError) as er:
                 pass
     raise er
+
+
+def _vt_default_request_retry(req):
+    r = _vt_default_request(req)
+    if r and r.status_code == 200 and r.content:
+        return r.content
+    return None
 
 
 def vt_report_from_resource(resource):
@@ -595,7 +595,7 @@ def vt_search(search_modifier):
 
 def vt_download(hashvar):
     req = vt_make_request_download(hashvar)
-    return _vt_default_request_retry(req)
+    return _vt_default_request(req)
 
 
 def vt_batch_sync_report(hashs):
