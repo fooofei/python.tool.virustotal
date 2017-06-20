@@ -389,7 +389,9 @@ class _Vendors(object):
         raise StopIteration
 
     def results(self):
-        ''' most like with report()'''
+        ''' most like with report()
+            only positive's results
+        '''
         for k in self.vendors():
             yield (k, self.vname(k))
 
@@ -473,7 +475,7 @@ class Report(JsonReport, _Vendors):
         return v.get(vendor, None) if v else None
 
     def first_positive(self):
-        for k, v in self.items():
+        for k, v in self.results():
             return (k, v)
         return None
 
