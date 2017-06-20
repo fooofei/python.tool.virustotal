@@ -2,20 +2,26 @@
 from __future__ import unicode_literals
 from __future__ import print_function
 
+import sys
+import os
 import six
-from io_in_out import *
+from io_in_out import io_hash_stream
+from io_in_out import io_print
+from io_in_out import io_iter_files_from_arg
+from io_in_out import io_hash_fullpath
 
-from vtapi import vt_rescan_from_resource, \
-    vt_report_from_resource, \
-    vt_batch_sync_report, \
-    vt_batch_async_report, \
-    vt_check_reports_equal, \
-    Report, vt_scan, JsonReport, \
-    vt_make_resource_from_hashs, \
-    vt_batch_async_rescan, \
-    vt_batch_async_scan,\
-    _vt_report_resources_to_set, \
-    vt_batch_async_report_fullpath, vt_search
+
+from vtapi import vt_rescan_from_resource
+from vtapi import vt_report_from_resource
+from vtapi import vt_batch_sync_report
+from vtapi import vt_batch_async_report
+from vtapi import vt_check_reports_equal
+from vtapi import Report, vt_scan, JsonReport
+from vtapi import vt_make_resource_from_hashs
+from vtapi import vt_batch_async_rescan
+from vtapi import vt_batch_async_scan
+from vtapi import _vt_report_resources_to_set
+from vtapi import vt_batch_async_report_fullpath, vt_search
 
 
 # tests

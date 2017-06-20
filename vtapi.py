@@ -34,12 +34,17 @@
 # 2017-05-11 v1.20  add vt search
 # 2017-05-12 v2.00  增加 API 后需要调整结构
 # 2017-06-05 v2.01  add vt_down
-
+# 2017-06-19 v3.00 更改 report, 增加基类
 
 from __future__ import print_function
 
 import six
-from io_in_out import *
+from io_in_out import io_in_arg
+from io_in_out import io_stderr_print
+from io_in_out import io_simple_check_hash
+from io_in_out import io_iter_split_step
+from io_in_out import io_hash_memory
+from io_in_out import io_simple_check_md5
 
 # todo add key here
 # VirusTotal_API_Key = ''
@@ -235,7 +240,7 @@ def _vt_filter_valid_resources(hashes):
     if not hashes:
         return []
     _SCAN_ID_RE = re.compile(r"^[a-fA-F0-9]{64}-[0-9]{10}$")
-    return filter(lambda e: io_simple_check_hash(e) or _SCAN_ID_RE.match(e), hashes)
+    return filter(lambda e: e is not None and (io_simple_check_hash(e) or _SCAN_ID_RE.match(e)), hashes)
 
 
 def vt_make_resource_from_hashs(hashs):
@@ -262,49 +267,37 @@ class VtApiError(ValueError):
     pass
 
 
-class JsonReport(object):
-    def __init__(self, r):
+class JsonReport(dict):
+    def __init__(self, *args, **kwargs):
         import json
 
+        super(JsonReport, self).__init__()
+        if not (len(args)>0):
+            raise VtApiError(u' no result')
+        r = args[0]
         if not r:
             raise VtApiError(u'result is None')
 
         if isinstance(r, six.string_types):
             try:
-                self._report = json.loads(r)
+                self.update(json.loads(r))
             except ValueError as er:
                 raise VtApiError(repr(er))
 
         elif isinstance(r, dict):
-            self._report = r
+            self.update(r)
         else:
             raise VtApiError(u'report not support type {0}'.format(type(r)))
 
-        if not self._report:
-            raise VtApiError(u'report is {0}'.format(self._report))
-        if not isinstance(self._report, dict):
-            raise VtApiError(u'report is not dict, check your submit')
+        if not self:
+            raise VtApiError(u'report is {0}'.format(self))
 
-    def __getitem__(self, item):
-        attr = {
-            u'id': u'resource'
-        }.get(item, item)
-
-        if attr == u'md5' and attr not in self._report:
-            attr = u'resource'
-
-            v = self._report.get(attr, None)
-            # return v or None
-            return v and io_simple_check_md5(v) and v or None
-        if attr == u'state':
-            return self.state
-        return self._report.get(attr, None)
-
-    def __eq__(self, other):
-        return self._report.__eq__(other._report)
-
-    def __ne__(self, other):
-        return self._report.__ne__(other._report)
+        m5 = self.get(u'md5', None)
+        re = self.get(u'resource', None)
+        if not m5 and re and io_simple_check_md5(re):
+            self.update({u'md5': re})
+        if u'state' not in self:
+            self[u'state'] = self.state
 
     def __str__(self):
         v = []
@@ -312,10 +305,9 @@ class JsonReport(object):
             self[u'md5'],
             self.state,
         ))
-        if u'verbose_msg' in self._report:
-            x = u'verbose_msg -- {0}'.format(self[u'verbose_msg'])
-            v.append(x)
-        v.append(self._report)
+        vm = self.get(u'verbose_msg')
+        if vm: v.append(u'verbose_msg -- {0}'.format(vm))
+        v.append(dict(self))
         return u'\n\t'.join(map(six.text_type, v))
 
     def __repr__(self):
@@ -349,14 +341,12 @@ class JsonReport(object):
         return self.response_code == -2
 
 
-class Report(JsonReport):
-    '''
-    pre use 
-    if Report(r).ok :
-    to detect the report if is valid.
+class _Vendors(object):
+    ''' Implements this
+        This class is to help understand the Report of Virustotal or other reports.
     '''
     # can be read by outside
-    reliable_vendors = [u'BitDefender', u'Kaspersky', u'ESET-NOD32', u'Avira', u'Microsoft', u'McAfee']
+    reliable_vendors = [u'BitDefender', u'Kaspersky', u'ESET-NOD32', u'Avira', u'Microsoft', u'McAfee', ]
     careful_vendors = []
     careful_vendors.extend(reliable_vendors)
     careful_vendors.extend(
@@ -364,102 +354,153 @@ class Report(JsonReport):
          u'Qihoo-360']
     )
 
-    def __init__(self, r):
-        JsonReport.__init__(self, r)
 
-    def __getitem__(self, item):
-        if item == u'detect_rate':
-            return self.detect_rate()
-        return JsonReport.__getitem__(self, item)
+    def md5(self):
+        return u''
+
+    def rate(self):
+        ''' :return unicode'''
+        return u'0/0'
+
+    def detect(self, v):
+        ''':return bool'''
+        return False
+
+    def vname(self, v):
+        ''':return vname str'''
+        return u''
+
+    def datetime(self, v):
+        ''':return vendor's result update datetime'''
+        return u''
+
+    def report(self):
+        ''' give report for print, see result
+        :return [(), (), ()]'''
+        return []
+
+    def positives(self):
+        ''':return int  Vt result is read from dict json,
+        Platform result is calc by myself. '''
+        return 0
+
+    def vendors(self):
+        '''only give positives vendors'''
+        raise StopIteration
+
+    def results(self):
+        ''' most like with report()'''
+        for k in self.vendors():
+            yield (k, self.vname(k))
+
+    def costtime(self):
+        ''' this query time cost, seconds time, useing time.time()'''
+        return 0
+
+class Report(JsonReport, _Vendors):
+    '''
+    pre use 
+    if Report(r).ok :
+    to detect the report if is valid.
+    '''
+
+    def __init__(self, *args, **kwargs):
+        super(Report, self).__init__(*args, **kwargs)
+
+        if u'rate' not in self:
+            self[u'rate'] = self.rate()
 
     def __str__(self):
         if not self.ok:
             return JsonReport.__str__(self)
-        r = self.default_report()
+        r = self.report()
         r = map(lambda row_pair: map(six.text_type, row_pair), r)
         row_pair_format = lambda e: u'{0:>18} -- {1}'.format(e[0], e[1])
         y = [u'md5 - {0} ({1})'.format(
-            self[u'md5'],
+            self.md5(),
             self.state,
         )]
         y.extend(map(row_pair_format, r))
         return u'\n'.join(y)
 
-    def get_vendor(self, vendor):
+    def md5(self):
+        return self.get(u'md5',u'')
+
+    def rate(self):
+        ''' :return unicode'''
+        return u'{0}/{1}'.format(self.positives(), self.get(u'total', 0))
+
+    def detect(self, v):
+        ''':return bool'''
+        result_of_vendor = self.vendor(v)
+        return result_of_vendor.get(u'detected', False) if result_of_vendor else False
+
+    def vname(self, v):
+        ''':return vname str'''
+        result_of_vendor = self.vendor(v)
+        return result_of_vendor.get(u'result', u'') if result_of_vendor else u''
+
+    def datetime(self, v):
+        result_of_vendor = self.vendor(v)
+        return result_of_vendor.get(u'update', u'') if result_of_vendor else u''
+
+    def report(self):
+        ''':return [(), (), ()]'''
+        header = [u'state', u'md5', u'sha1', u'sha256', u'rate', u'scan_date']
+        r = [(e, self[e]) for e in header]
+        r.append((u'', u''))
+        r.extend([(vendor, self.vname(vendor)) for vendor in self.careful_vendors])
+        return r
+
+    def positives(self):
+        ''':return int  Vt result is read from dict json,
+        Platform result is calc by myself. '''
+        return int(self.get(u'positives', 0))
+
+    def vendors(self):
+        '''only give positives vendors'''
+        scans = self.get(u'scans', None)
+        if scans:
+            for k, v in scans.items():
+                if v.get(u'detected', False):
+                    yield k
+
+    def vendor(self, vendor):
         '''
         :return:  vendor result / None
         '''
-        v = self[u'scans']
-        return v and v.get(vendor, None) or None
-
-    @staticmethod
-    def report_vendor_detect(vendor_report):
-        return vendor_report and vendor_report[u'detected'] or None
-
-    @staticmethod
-    def report_vendor_vname(vendor_report):
-        return vendor_report and vendor_report[u'result'] or None
-
-    def vendor_detect(self, vendor):
-        '''
-        :return: True False None
-        '''
-        v = self.get_vendor(vendor)
-        return self.report_vendor_detect(v)
-
-    def vendor_vname(self, vendor):
-        v = self.get_vendor(vendor)
-        return self.report_vendor_vname(v)
+        v = self.get(u'scans', None)
+        return v.get(vendor, None) if v else None
 
     def first_positive(self):
-        scans = self[u'scans']
-        if scans and isinstance(scans, dict):
-            for k, v in scans.items():
-                if self.report_vendor_detect(v):
-                    return (k, self.report_vendor_vname(v))
-        return (None, None)
+        for k, v in self.items():
+            return (k, v)
+        return None
 
     def first_reliable_positive(self):
         for vendor in self.reliable_vendors:
-            if self.vendor_detect(vendor):
-                return (vendor, self.vendor_vname(vendor))
-        return (None, None)
+            if self.detect(vendor):
+                return (vendor, self.vname(vendor))
+        return None
 
     def simple_report(self):
-        header = [u'md5', u'state', u'detect_rate', u'scan_date']
+        header = [u'md5', u'state', u'rate', u'scan_date']
         return [(e, self[e]) for e in header]
 
-    def default_report(self):
-        header = [u'state', u'md5', u'sha1', u'sha256', u'detect_rate', u'scan_date']
-        r = []
-        for e in header:
-            r.append((e, self[e]))
-        r.append((u'', u''))
-        for vendor in self.careful_vendors:
-            r.append((vendor, self.vendor_vname(vendor)))
-        return r
-
     def all_report(self):
-        header = [u'md5', u'detect_rate', u'scan_date']
-        r = []
-        for e in header:
-            r.append((e, self[e]))
+        header = [u'md5', u'rate', u'scan_date']
+        r = [(e, self[e]) for e in header]
         r.append((u'', u''))
-        scans = self[u'scans']
-        if scans and isinstance(scans, dict):
-            for k, v in scans.items():
-                r.append((k, self.report_vendor_vname(v)))
+        scans = self.get(u'scans', None)
+        if scans: r.extend([(k, v) for k, v in scans.items()])
         return r
 
     def scan_report(self):
         header = [u'md5', u'state', u'scan_id', u'permalink', u'verbose_msg']
         return [(e, self[e]) for e in header]
 
-    def positives(self):
-        return self[u'positives']
-
-    def detect_rate(self):
-        return u'{0}/{1}'.format(self.positives(), self[u'total'])
+    def downable(self):
+        return not self.file_not_exists # self.ok or self.analyzing
 
     @staticmethod
     def dispatch_report(r):
@@ -468,7 +509,7 @@ class Report(JsonReport):
         :param r: 
         :return: []
         '''
-        if not r :
+        if not r:
             return None
         import json
         try:
@@ -492,7 +533,6 @@ def _vt_report_resources_to_set(reports):
     return set(e[u'resource'] for e in reports)
 
 
-
 def _vt_default_request(req):
     '''
     if use requests streaming, we cannot return r.content direct,
@@ -504,15 +544,19 @@ def _vt_default_request(req):
         return None
     er = None
     request_retry = req.get(u'request_retry', 1)
+    request_kwargs = req.get(u'requests_kwargs')
     with sessions.Session() as ses:
         for _ in range(request_retry):
             try:
                 return ses.request(method=req.get(u'method', u'get')
-                                , url=req.get(u'url')
-                                , **req.get(u'requests_kwargs'))
-            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout,
-                    requests.exceptions.SSLError) as er:
-                pass
+                                   , url=req.get(u'url')
+                                   , **request_kwargs)
+            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as er1:
+                t = request_kwargs.get(u'timeout', 0)
+                request_kwargs.update({u'timeout': t + 5})
+                er = er1
+            except (requests.exceptions.SSLError, requests.exceptions.ProxyError) as er2:
+                er = er2
     raise er
 
 
@@ -908,7 +952,7 @@ def vt_batch_async_download(path_save_dir, hashes, **kwargs):
                                   # 也不是固定的 2 个 hash 错误， 但一定是固定的 2 个
                                   , grequests_pool_size=kwargs.get(u'grequests_pool_size', 6))
 
-    for res,h in izip(v,hashes):
+    for res, h in izip(v, hashes):
         con = res.content
         m = io_hash_memory(con)
         assert (m == h)
@@ -917,7 +961,6 @@ def vt_batch_async_download(path_save_dir, hashes, **kwargs):
             os.remove(p)
         with open(p, 'wb') as f:
             f.write(con)
-
 
 
 def vt_check_reports_equal(r_new, r_old):
