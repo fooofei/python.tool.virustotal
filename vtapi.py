@@ -264,6 +264,9 @@ def vt_make_resource_from_hashs(hashs):
 
 
 class VtApiError(ValueError):
+    '''
+    except ValueError, can catch VtApiError error
+    '''
     pass
 
 
@@ -326,7 +329,7 @@ class JsonReport(dict):
 
     @property
     def response_code(self):
-        return self[u'response_code']
+        return self.get(u'response_code',-1)
 
     @property
     def ok(self):
@@ -502,6 +505,7 @@ class Report(JsonReport, _Vendors):
         return [(e, self[e]) for e in header]
 
     def downable(self):
+        ''' 能下载的样本不一定有 report ， 可能在 analyzing 中 '''
         return not self.file_not_exists # self.ok or self.analyzing
 
     @staticmethod
