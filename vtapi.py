@@ -225,12 +225,12 @@ def vt_make_request_download(hashvar):
     params.update({u'hash': hashvar})
     return {u'method': u'get',
             u'url': url,
-            u'request_retry': 4,
+            u'request_retry': 6,
             u'requests_kwargs': {
                 u'params': params,
                 u'timeout': 20,
                 u'proxies': VirusTotal_Proxy,
-                u'stream':True,
+                u'stream': True,
             }
             }
 
