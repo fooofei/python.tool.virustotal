@@ -35,6 +35,7 @@
 # 2017-05-12 v2.00  增加 API 后需要调整结构
 # 2017-06-05 v2.01  add vt_down
 # 2017-06-19 v3.00 更改 report, 增加基类
+# 2017-08-11 v3.01 upload file cannot contain non-ASCII characters
 
 from __future__ import print_function
 
@@ -606,8 +607,7 @@ def vt_scan(file_content, file_name):
     :return:  raw content from VirusTotal.com request / None
     '''
     q = {u'file_content': file_content}
-    if file_name:
-        q[u'file_name'] = file_name
+    # if file_name:q[u'file_name'] = file_name
     req = vt_make_request_scan(**q)
     return _vt_default_request_retry(req)
 
