@@ -349,14 +349,14 @@ class _Vendors(object):
         This class is to help understand the Report of Virustotal or other reports.
     '''
     # can be read by outside
-    reliable_vendors = [u'BitDefender', u'Kaspersky', u'ESET-NOD32', u'Avira', u'Microsoft', u'McAfee', ]
+    reliable_vendors = [u'Avast', u'Avira', u'BitDefender', u'DrWeb', u'ESET-NOD32',
+                        u'Kaspersky', u'McAfee', u'Microsoft', u'Symantec', u'TrendMicro', ]
     careful_vendors = []
     careful_vendors.extend(reliable_vendors)
     careful_vendors.extend(
-        [u'Avast', u'AVG', u'McAfee-GW-Edition', u'Kingsoft', u'Jiangmin', u'Baidu', u'Rising', u'Tencent',
+        [u'McAfee-GW-Edition', u'Kingsoft', u'Jiangmin', u'Baidu', u'Rising', u'Tencent',
          u'Qihoo-360']
     )
-
 
     def md5(self):
         return u''
@@ -402,6 +402,10 @@ class _Vendors(object):
         ''' this query time cost, seconds time, useing time.time()'''
         return 0
 
+    def reliable_positives(self):
+        return sum([self.detect(v) for v in self.reliable_vendors])
+
+
 class Report(JsonReport, _Vendors):
     '''
     pre use 
@@ -412,8 +416,11 @@ class Report(JsonReport, _Vendors):
     def __init__(self, *args, **kwargs):
         super(Report, self).__init__(*args, **kwargs)
 
-        if u'rate' not in self:
-            self[u'rate'] = self.rate()
+        v = {
+            u'rate': self.rate(),
+            u'reliable_positives': self.reliable_positives(),
+        }
+        self.update(v)
 
     def __str__(self):
         if not self.ok:
@@ -451,7 +458,7 @@ class Report(JsonReport, _Vendors):
 
     def report(self):
         ''':return [(), (), ()]'''
-        header = [u'state', u'md5', u'sha1', u'sha256', u'rate', u'scan_date']
+        header = [u'state', u'md5', u'sha1', u'sha256', u'rate', u'reliable_positives', u'scan_date']
         r = [(e, self[e]) for e in header]
         r.append((u'', u''))
         r.extend([(vendor, self.vname(vendor)) for vendor in self.careful_vendors])
@@ -490,11 +497,11 @@ class Report(JsonReport, _Vendors):
 
     def simple_report(self):
         header = [u'md5', u'state', u'rate', u'scan_date']
-        return [(e, self[e]) for e in header]
+        return [(e, self.get(e)) for e in header]
 
     def all_report(self):
         header = [u'md5', u'rate', u'scan_date']
-        r = [(e, self[e]) for e in header]
+        r = [(e, self.get(e)) for e in header]
         r.append((u'', u''))
         scans = self.get(u'scans', None)
         if scans: r.extend([(k, v) for k, v in scans.items()])
@@ -502,11 +509,11 @@ class Report(JsonReport, _Vendors):
 
     def scan_report(self):
         header = [u'md5', u'state', u'scan_id', u'permalink', u'verbose_msg']
-        return [(e, self[e]) for e in header]
+        return [(e, self.get(e)) for e in header]
 
     def downable(self):
         ''' 能下载的样本不一定有 report ， 可能在 analyzing 中 '''
-        return not self.file_not_exists # self.ok or self.analyzing
+        return not self.file_not_exists  # self.ok or self.analyzing
 
     @staticmethod
     def dispatch_report(r):
